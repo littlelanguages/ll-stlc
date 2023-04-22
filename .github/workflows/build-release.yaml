@@ -273,14 +273,14 @@ jobs:
           az storage blob upload \
             --account-name littlelanguages \
             --container-name stlc \
-            --name slca-bci-c-darwin-x86_64 \
+            --name stlc-bci-c-darwin-x86_64 \
             --type block \
             --tier hot \
             --file src/bci --overwrite
           az storage blob upload \
             --account-name littlelanguages \
             --container-name stlc \
-            --name slca-bci-c-darwin-aarch64 \
+            --name stlc-bci-c-darwin-aarch64 \
             --type block \
             --tier hot \
             --file src/bci --overwrite
