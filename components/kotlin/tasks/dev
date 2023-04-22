@@ -1,0 +1,129 @@
+#!/bin/bash
+
+PROJECT_HOME=$(dirname "$0")/..
+TESTS_HOME=../../scenarios/stlc
+
+build_jar() {
+    echo "---| build JAR"
+    ./gradlew jar || exit 1
+}
+
+build_parser() {
+    (
+        echo "---| build parser"
+
+        deno run --allow-read --allow-write --allow-net --unsafely-ignore-certificate-errors \
+            "https://raw.githubusercontent.com/littlelanguages/parspiler-cli/main/mod.ts" kotlin \
+            --verbose \
+            --directory=./app/src/main/kotlin \
+            --package=stlc.parser \
+            ../stlc/Grammar.llgd || exit 1
+    )
+}
+
+compiler_scenarios() {
+    echo "---| compiler scenario tests"
+
+    for FILE in "$TESTS_HOME"/*.inp; do
+        echo "- scenario test: $FILE"
+
+        OUTPUT_BIN_FILE="$TESTS_HOME"/$(basename "$FILE" .inp).bin
+        OUTPUT_OUT_FILE="$TESTS_HOME"/$(basename "$FILE" .inp).out
+
+        java -jar app/build/libs/app.jar "$FILE" "$OUTPUT_BIN_FILE" || exit 1
+        deno run --allow-read ../bci-deno/bci.ts run "$OUTPUT_BIN_FILE" > t.txt || exit 1
+
+        if ! diff -q "$OUTPUT_OUT_FILE" t.txt; then
+            echo "scenario test failed: $FILE"
+            diff "$OUTPUT_OUT_FILE" t.txt
+            rm t.txt
+            exit 1
+        fi
+
+        rm t.txt
+    done
+
+}
+
+interpreter_scenarios() {
+    echo "---| interpreter scenario tests"
+
+    for FILE in "$TESTS_HOME"/*.inp; do
+        echo "- scenario test: $FILE"
+
+	    OUTPUT_OUT_FILE="$TESTS_HOME"/$(basename "$FILE" .inp).out
+
+        java -jar app/build/libs/app.jar "$FILE" > t.txt || exit 1
+
+        if ! diff -q "$OUTPUT_OUT_FILE" t.txt; then
+            echo "scenario test failed: $FILE"
+            diff "$OUTPUT_OUT_FILE" t.txt
+            rm t.txt
+            exit 1
+        fi
+
+        rm t.txt
+    done
+
+}
+
+unit_tests() {
+    echo "---| unit tests"
+    ./gradlew test || exit 1
+}
+
+cd "$PROJECT_HOME" || exit 1
+
+case "$1" in
+"" | help)
+    echo "Usage: $0 [<command>]"
+    echo "Commands:"
+    echo "  help"
+    echo "    This help page"
+    echo "  compiler_scenarios"
+    echo "    Run the scenarios using the compiled bytecode"
+    echo "  interpreter_scenarios"
+    echo "    Run the scenarios using the interpreter"
+    echo "  jar"
+    echo "    Create the application's JAR file"
+    echo "  parser"
+    echo "    Builds the parser from specs"
+    echo "  run"
+    echo "    Run all tasks"
+    echo "  unit"
+    echo "    Run all unit tests"
+    ;;
+
+compiler_scenarios)
+    compiler_scenarios
+    ;;
+
+interpreter_scenarios)
+    interpreter_scenarios
+    ;;
+
+jar)
+    build_jar
+    ;;
+
+run)
+    build_parser
+    unit_tests
+    build_jar
+    interpreter_scenarios
+    compiler_scenarios
+    ;;
+
+parser)
+    build_parser
+    ;;
+
+unit)
+    unit_tests
+    ;;
+
+*)
+    echo "$0: $1: Unknown command"
+    exit 1
+    ;;
+esac

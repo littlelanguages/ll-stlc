@@ -1,0 +1,4 @@
+*.o
+
+src/bci
+test/test-runner
