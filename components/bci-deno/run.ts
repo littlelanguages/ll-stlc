@@ -29,7 +29,7 @@ const activationDepth = (a: Activation | undefined): number => {
     return 1;
   }
   return 1 + activationDepth(a[1].previous);
-}
+};
 
 const valueToString = (v: Value): string => {
   switch (v.tag) {
@@ -90,8 +90,9 @@ export const execute = (
       return `<${activationString}, ${closureString}, ${ipString}, ${variablesString}>`;
     };
 
-    return `[${stack.map(valueToString).join(", ")}] :: ${activationToString(activation)
-      }`;
+    return `[${stack.map(valueToString).join(", ")}] :: ${
+      activationToString(activation)
+    }`;
   };
 
   const readIntFrom = (ip: number): number =>
@@ -105,7 +106,8 @@ export const execute = (
       const args = op.args.map((_, i) => readIntFrom(ip + i * 4));
 
       console.log(
-        `${ip - 1}: ${op.name}${args.length > 0 ? " " : ""}${args.join(" ")
+        `${ip - 1}: ${op.name}${args.length > 0 ? " " : ""}${
+          args.join(" ")
         }: ${stackToString()}`,
       );
     }
