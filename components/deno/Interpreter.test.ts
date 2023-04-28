@@ -1,6 +1,9 @@
-import { assertEquals } from "https://deno.land/std@0.137.0/testing/asserts.ts";
+import {
+  assertEquals,
+  fail,
+} from "https://deno.land/std@0.137.0/testing/asserts.ts";
 
-import { execute } from "./Interpreter.ts";
+import { execute, formatError } from "./Interpreter.ts";
 import { TArr } from "./Typing.ts";
 
 Deno.test("App", () => {
@@ -72,6 +75,37 @@ Deno.test("Arb", () => {
   );
 });
 
+Deno.test("Format syntax error", () => {
+  assertError(
+    "10 + ",
+    "Syntax Error: expected '(', literal int, True, False, '\\', let, if, identifier but found <end-of-stream> at 1:6",
+  );
+});
+
+Deno.test("Format unification error", () => {
+  assertError(
+    "1 + True",
+    "Unification Mismatch Error: unable to unify Bool from 1:5-8 with Int",
+  );
+
+  assertError(
+    "if (1) 1 else 2",
+    "Unification Mismatch Error: unable to unify Int from 1:5 with Bool",
+  );
+
+  assertError(
+    "if (1 + 2) 1 else 2",
+    "Unification Mismatch Error: unable to unify Int from 1:5-9 with Bool",
+  );
+});
+
+Deno.test("Format unknown name error", () => {
+  assertError(
+    "hello",
+    "Unknown Name: hello at 1:1-5",
+  );
+});
+
 const assertExecute = (expression: string, expected: string) => {
   const [value, type] = execute(expression);
 
@@ -85,5 +119,22 @@ const assertExecute = (expression: string, expected: string) => {
       expected,
       `${value}: ${type}`,
     );
+  }
+};
+
+const assertError = (expression: string, expected: string) => {
+  let exceptionThrown = false;
+  try {
+    execute(expression);
+  } catch (e) {
+    exceptionThrown = true;
+    assertEquals(
+      formatError(e),
+      expected,
+    );
+  }
+
+  if (!exceptionThrown) {
+    fail("Exception not thrown");
   }
 };

@@ -12,23 +12,35 @@ const bind = (
 ): Unifier => [new Subst(new Map([[name, type]])), []];
 
 const unifies = (t1: Type, t2: Type): Unifier => {
-  if (t1 == t2) return emptyUnifier;
-  if (t1 instanceof TVar) return bind(t1.name, t2);
-  if (t2 instanceof TVar) return bind(t2.name, t1);
+  if (t1.equals(t2)) return emptyUnifier;
+  if (t1 instanceof TVar) {
+    return bind(
+      t1.name,
+      t1.location === undefined || t2.location !== undefined
+        ? t2
+        : t2.atLocation(t1.location),
+    );
+  }
+  if (t2 instanceof TVar) {
+    return bind(
+      t2.name,
+      t2.location === undefined || t1.location !== undefined
+        ? t1
+        : t1.atLocation(t2.location),
+    );
+  }
   if (t1 instanceof TArr && t2 instanceof TArr) {
     return unifyMany([t1.domain, t1.range], [t2.domain, t2.range]);
   }
   if (t1 instanceof TTuple && t2 instanceof TTuple) {
     if (t1.types.length !== t2.types.length) {
-      throw `Unification Mismatch: Tuple: ${JSON.stringify(t1)} ${
-        JSON.stringify(t2)
-      }`;
+      throw { tag: "UnificationMismatchError", type1: t1, type2: t2 };
     }
 
     return unifyMany(t1.types, t2.types);
   }
 
-  throw `Unification Mismatch: ${JSON.stringify(t1)} ${JSON.stringify(t2)}`;
+  throw { tag: "UnificationMismatchError", type1: t1, type2: t2 };
 };
 
 const applyTypes = (s: Subst, ts: Array<Type>): Array<Type> =>
@@ -37,7 +49,7 @@ const applyTypes = (s: Subst, ts: Array<Type>): Array<Type> =>
 const unifyMany = (ta: Array<Type>, tb: Array<Type>): Unifier => {
   if (ta.length === 0 && tb.length === 0) return emptyUnifier;
   if (ta.length === 0 || tb.length === 0) {
-    throw `Unification Mismatch: ${JSON.stringify(ta)} ${JSON.stringify(tb)}`;
+    throw { tag: "UnificationMismatchError", type1: ta, type2: tb };
   }
 
   const [t1, ...ts1] = ta;

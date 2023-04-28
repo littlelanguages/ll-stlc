@@ -1,4 +1,4 @@
-import { execute as executeProgram } from "./Interpreter.ts";
+import { execute as executeProgram, formatError } from "./Interpreter.ts";
 import { Subst, TVar, Type } from "./Typing.ts";
 
 const readline = (): string | null => {
@@ -62,12 +62,16 @@ if (Deno.args.length === 0) {
       try {
         execute(line);
       } catch (e) {
-        console.error(e);
+        console.log(formatError(e));
       }
     }
   }
 } else if (Deno.args.length === 1) {
-  execute(Deno.readTextFileSync(Deno.args[0]));
+  try {
+    execute(Deno.readTextFileSync(Deno.args[0]));
+  } catch (e) {
+    console.log(formatError(e));
+  }
 } else {
   console.error("Invalid arguments");
 }

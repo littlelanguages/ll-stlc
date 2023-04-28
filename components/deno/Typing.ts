@@ -1,18 +1,38 @@
 import * as Sets from "./Set.ts";
 import * as Maps from "./Map.ts";
+import {
+  Location,
+  toString,
+} from "https://raw.githubusercontent.com/littlelanguages/scanpiler-deno-lib/0.1.1/location.ts";
 
 export type Var = string;
 
 export interface Type {
+  location: Location | undefined;
+  equals: (other: Type) => boolean;
   apply: (s: Subst) => Type;
   ftv: () => Set<Var>;
+  prettyPrint: () => string;
+  atLocation: (location: Location) => Type;
 }
+
+const prettyPrint = (t: Type): string => {
+  return (t.location === undefined)
+    ? t.toString()
+    : `${t.toString()} from ${toString(t.location)}`;
+};
 
 export class TVar implements Type {
   name: Var;
+  location: Location | undefined;
 
-  constructor(name: Var) {
+  constructor(name: Var, location: Location | undefined = undefined) {
     this.name = name;
+    this.location = location;
+  }
+
+  equals(other: Type): boolean {
+    return other instanceof TVar && other.name === this.name;
   }
 
   apply(s: Subst): Type {
@@ -26,13 +46,27 @@ export class TVar implements Type {
   toString(): string {
     return this.name;
   }
+
+  prettyPrint(): string {
+    return prettyPrint(this);
+  }
+
+  atLocation(location: Location): Type {
+    return new TVar(this.name, location);
+  }
 }
 
 export class TCon implements Type {
   name: string;
+  location: Location | undefined;
 
-  constructor(name: string) {
+  constructor(name: string, location: Location | undefined = undefined) {
     this.name = name;
+    this.location = location;
+  }
+
+  equals(other: Type): boolean {
+    return other instanceof TCon && other.name === this.name;
   }
 
   apply(_s: Subst): Type {
@@ -45,15 +79,34 @@ export class TCon implements Type {
   toString(): string {
     return this.name;
   }
+
+  prettyPrint(): string {
+    return prettyPrint(this);
+  }
+
+  atLocation(location: Location): Type {
+    return new TCon(this.name, location);
+  }
 }
 
 export class TArr implements Type {
   domain: Type;
   range: Type;
+  location: Location | undefined;
 
-  constructor(domain: Type, range: Type) {
+  constructor(
+    domain: Type,
+    range: Type,
+    location: Location | undefined = undefined,
+  ) {
     this.domain = domain;
     this.range = range;
+    this.location = location;
+  }
+
+  equals(other: Type): boolean {
+    return other instanceof TArr && this.domain.equals(other.domain) &&
+      this.range.equals(other.range);
   }
 
   apply(s: Subst): Type {
@@ -71,13 +124,31 @@ export class TArr implements Type {
       return `${this.domain} -> ${this.range}`;
     }
   }
+
+  prettyPrint(): string {
+    return prettyPrint(this);
+  }
+
+  atLocation(location: Location): Type {
+    return new TArr(this.domain, this.range, location);
+  }
 }
 
 export class TTuple implements Type {
   types: Type[];
+  location: Location | undefined;
 
-  constructor(types: Type[]) {
+  constructor(types: Type[], location: Location | undefined = undefined) {
     this.types = types;
+    this.location = location;
+  }
+
+  equals(other: Type): boolean {
+    return other instanceof TTuple &&
+      this.types.length === other.types.length &&
+      this.types.map((v, i) => [v, other.types[i]]).every(([t1, t2]) =>
+        t1.equals(t2)
+      );
   }
 
   apply(s: Subst): Type {
@@ -90,6 +161,14 @@ export class TTuple implements Type {
 
   toString(): string {
     return `(${this.types.join(" * ")})`;
+  }
+
+  prettyPrint(): string {
+    return prettyPrint(this);
+  }
+
+  atLocation(location: Location): Type {
+    return new TTuple(this.types, location);
   }
 }
 

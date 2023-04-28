@@ -11,6 +11,10 @@ import {
   typeError,
   typeInt,
 } from "./Typing.ts";
+import {
+  combine,
+  mkCoordinate,
+} from "https://raw.githubusercontent.com/littlelanguages/scanpiler-deno-lib/0.1.1/location.ts";
 
 const ops = new Map([
   [Op.Equals, new TArr(typeInt, new TArr(typeInt, typeBool))],
@@ -100,7 +104,9 @@ export const inferExpression = (
           expr: {
             type: "LTuple",
             values: expr.declarations.map((d) => d.expr),
+            location: mkCoordinate(0, 0, 0),
           },
+          location: mkCoordinate(0, 0, 0),
         },
         constraints,
       );
@@ -119,28 +125,36 @@ export const inferExpression = (
       return infer(solvedEnv, expr.expr);
     }
     if (expr.type === "LBool") {
-      return typeBool;
+      return typeBool.atLocation(expr.location);
     }
     if (expr.type === "LInt") {
-      return typeInt;
+      return typeInt.atLocation(expr.location);
     }
     if (expr.type === "LTuple") {
       return new TTuple(expr.values.map((v) => infer(env, v)));
     }
     if (expr.type === "Op") {
+      const location = combine(expr.left.location, expr.right.location);
+
       const tl = infer(env, expr.left);
       const tr = infer(env, expr.right);
-      const tv = pump.next();
+      const tv = pump.next().atLocation(location);
 
-      const u1 = new TArr(tl, new TArr(tr, tv));
-      const u2 = ops.get(expr.op)!;
+      const u1 = new TArr(tl, new TArr(tr, tv), location);
+      const u2 = ops.get(expr.op)!.atLocation(location);
       constraints.add(u1, u2);
       return tv;
     }
     if (expr.type === "Var") {
       const scheme = env.scheme(expr.name);
 
-      if (scheme === undefined) throw `Unknown name: ${expr.name}`;
+      if (scheme === undefined) {
+        throw {
+          tag: "UnknownNameError",
+          name: expr.name,
+          location: expr.location,
+        };
+      }
 
       return scheme.instantiate(pump);
     }
