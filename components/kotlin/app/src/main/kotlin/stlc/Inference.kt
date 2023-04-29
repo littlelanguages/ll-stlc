@@ -1,5 +1,7 @@
 package stlc
 
+import io.littlelanguages.scanpiler.LocationCoordinate
+
 data class InferResult(val constraints: Constraints, val type: Type)
 
 fun infer(typeEnv: TypeEnv, e: Expression): InferResult {
@@ -42,10 +44,10 @@ private class Inference(val constraints: Constraints = Constraints(), val pump: 
             }
 
             is LBoolExpression ->
-                typeBool
+                typeBool.atLocation(e.location)
 
             is LIntExpression ->
-                typeInt
+                typeInt.atLocation(e.location)
 
             is LTupleExpression ->
                 TTuple(e.es.map { infer(typeEnv, it) })
@@ -69,7 +71,12 @@ private class Inference(val constraints: Constraints = Constraints(), val pump: 
                 val tvs = pump.nextN(e.decls.size)
 
                 val interimTypeEnv = typeEnv + e.decls.zip(tvs).map { (decl, tv) -> Pair(decl.n, Scheme(setOf(), tv)) }
-                val declarationType = fix(interimTypeEnv, LamExpression("_bob", LTupleExpression(e.decls.map { it.e })), constraints)
+                val coordinate = LocationCoordinate(0, 0, 0)
+                val declarationType = fix(
+                    interimTypeEnv,
+                    LamExpression("_bob", LTupleExpression(e.decls.map { it.e }, coordinate), coordinate),
+                    constraints
+                )
                 constraints.add(declarationType, TTuple(tvs))
 
                 val subst = constraints.solve()
@@ -83,19 +90,19 @@ private class Inference(val constraints: Constraints = Constraints(), val pump: 
             is OpExpression -> {
                 val t1 = infer(typeEnv, e.e1)
                 val t2 = infer(typeEnv, e.e2)
-                val tv = pump.next()
+                val tv = pump.next().atLocation(e.location)
 
-                val u1 = TArr(t1, TArr(t2, tv))
-                val u2 = ops[e.op] ?: typeError
+                val u1 = TArr(t1, TArr(t2, tv), e.location)
+                val u2 = (ops[e.op] ?: typeError).atLocation(e.location)
                 constraints.add(u1, u2)
 
                 tv
             }
 
             is VarExpression -> {
-                val scheme = typeEnv[e.name] ?: throw UnknownNameException(e.name, typeEnv)
+                val scheme = typeEnv[e.name] ?: throw UnknownNameException(e.name, e.location)
 
-                scheme.instantiate(pump)
+                scheme.instantiate(pump).atLocation(e.location)
             }
         }
 
@@ -119,5 +126,3 @@ val ops = mapOf<Op, Type>(
     Pair(Op.Times, TArr(typeInt, TArr(typeInt, typeInt))),
     Pair(Op.Divide, TArr(typeInt, TArr(typeInt, typeInt))),
 )
-
-data class UnknownNameException(val name: String, val typeEnv: TypeEnv) : Exception()

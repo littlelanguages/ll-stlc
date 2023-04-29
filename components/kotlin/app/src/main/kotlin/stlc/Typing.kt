@@ -1,49 +1,78 @@
 package stlc
 
+import io.littlelanguages.scanpiler.Location
+
 typealias Var = String
 
-sealed class Type {
+sealed class Type(open val location: Location?) {
     abstract fun apply(s: Subst): Type
+
     abstract fun ftv(): Set<Var>
+
+    fun prettyPrint(): String =
+        if (location == null) toString() else "$this from ${location!!.asString()}"
+
+    abstract fun atLocation(location: Location?): Type
 }
 
-data class TVar(val name: String) : Type() {
+data class TVar(val name: String, override val location: Location? = null) : Type(location) {
     override fun apply(s: Subst): Type =
         s[name] ?: this
 
     override fun ftv(): Set<Var> =
         setOf(name)
 
+    override fun atLocation(location: Location?): Type =
+        TVar(name, location)
+
     override fun toString(): String = name
+
+    override fun equals(other: Any?): Boolean =
+        other is TVar && name == other.name
 }
 
-data class TCon(private val name: String) : Type() {
+data class TCon(private val name: String, override val location: Location? = null) : Type(location) {
     override fun apply(s: Subst): Type = this
 
     override fun ftv(): Set<Var> = emptySet()
 
+    override fun atLocation(location: Location?): Type = TCon(name, location)
+
     override fun toString(): String = name
+
+    override fun equals(other: Any?): Boolean =
+        other is TCon && name == other.name
 }
 
-data class TTuple(val types: List<Type>) : Type() {
+data class TTuple(val types: List<Type>, override val location: Location? = null) : Type(location) {
     override fun apply(s: Subst): Type =
         TTuple(types.map { it.apply(s) })
 
     override fun ftv(): Set<Var> =
         types.fold(emptySet()) { acc, t -> acc + t.ftv() }
 
+    override fun atLocation(location: Location?): Type = TTuple(types, location)
+
     override fun toString(): String = "(${types.joinToString(" * ")})"
+
+    override fun equals(other: Any?): Boolean =
+        other is TTuple && types == other.types
 }
 
-data class TArr(val domain: Type, val range: Type) : Type() {
+data class TArr(val domain: Type, val range: Type, override val location: Location? = null) : Type(location) {
     override fun apply(s: Subst): Type =
         TArr(domain.apply(s), range.apply(s))
 
     override fun ftv(): Set<Var> =
         domain.ftv() + range.ftv()
 
+    override fun atLocation(location: Location?): Type = TArr(domain, range, location)
+
     override fun toString(): String =
         if (domain is TArr) "($domain) -> $range" else "$domain -> $range"
+
+    override fun equals(other: Any?): Boolean =
+        other is TArr && domain == other.domain && range == other.range
 }
 
 val typeError = TCon("Error")

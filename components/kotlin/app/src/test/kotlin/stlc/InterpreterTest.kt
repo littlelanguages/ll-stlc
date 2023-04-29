@@ -84,14 +84,21 @@ class InterpreterTest {
 class FormatErrorsTest {
     @Test
     fun syntaxError() {
-        assertFormatError("let x = in x * x +", "Syntax Error: expected '(', literal int, True, False, '\\', let, if, identifier but found in at 1:10-11")
-        assertFormatError("10 +", "Syntax Error: expected '(', literal int, True, False, '\\', let, if, identifier but found <end-of-stream> at 1:6")
+        assertFormatError("let x = in x * x", "Syntax Error: expected '(', literal int, True, False, '\\', let, if, identifier but found in at 1:9-10")
+        assertFormatError("10 + ", "Syntax Error: expected '(', literal int, True, False, '\\', let, if, identifier but found <end-of-stream> at 1:6")
     }
 
-//    @Test
-//    fun unificationError() {
-//        assertFormatError("1 + True", "Unification Mismatch Error: unable to unify Bool from 1:5-8 with Int")
-//    }
+    @Test
+    fun unificationError() {
+        assertFormatError("1 + True", "Unification Mismatch: unable to unify Bool from 1:5-8 with Int")
+        assertFormatError("if (1) 1 else 2", "Unification Mismatch: unable to unify Int from 1:5 with Bool")
+        assertFormatError("if (1 + 2) 1 else 2", "Unification Mismatch: unable to unify Int from 1:5-9 with Bool")
+    }
+
+    @Test
+    fun formatUnknownNameError() {
+        assertFormatError("hello", "Unknown Name: hello at 1:1-5")
+    }
 }
 
 private fun assertExecute(input: String, expected: String) {

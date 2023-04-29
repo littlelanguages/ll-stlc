@@ -23,10 +23,15 @@ private fun bind(name: Var, type: Type): Unifier =
 private fun unifies(t1: Type, t2: Type): Unifier =
     when {
         t1 == t2 -> emptyUnifier
-        t1 is TVar -> bind(t1.name, t2)
-        t2 is TVar -> bind(t2.name, t1)
+        t1 is TVar -> bind(t1.name, if (t1.location == null || t2.location != null) t2 else t2.atLocation(t1.location))
+        t2 is TVar -> bind(t2.name, if (t2.location == null || t1.location != null) t1 else t1.atLocation(t2.location))
         t1 is TArr && t2 is TArr -> unifyMany(listOf(t1.domain, t1.range), listOf(t2.domain, t2.range))
-        t1 is TTuple && t2 is TTuple -> unifyMany(t1.types, t2.types)
+        t1 is TTuple && t2 is TTuple ->
+            if (t1.types.size != t2.types.size)
+                throw UnificationMismatch(t1, t2)
+            else
+                unifyMany(t1.types, t2.types)
+
         else -> throw UnificationMismatch(t1, t2)
     }
 
@@ -65,7 +70,3 @@ private fun solver(constraints: List<Constraint>): Subst {
 
     return su
 }
-
-data class UnificationMismatch(val t1: Type, val t2: Type) : Exception()
-
-data class UnificationManyMismatch(val t1: List<Type>, val t2: List<Type>) : Exception()

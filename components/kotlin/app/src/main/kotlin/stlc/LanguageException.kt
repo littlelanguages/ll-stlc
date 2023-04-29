@@ -38,20 +38,34 @@ private fun TToken.asString(): String {
     }
 }
 
-private fun Location.asString(): String =
+fun Location.asString(): String =
     when (this) {
         is LocationCoordinate ->
-            "${this.line}:${this.column + 1}"
+            "${this.line}:${this.column}"
 
         is LocationRange ->
             if (this.start.line == this.end.line)
-                "${this.start.line}:${this.start.column + 1}-${this.end.column + 1}"
+                "${this.start.line}:${this.start.column}-${this.end.column}"
             else
-                "${this.start.line}:${this.start.column + 1}-${this.end.line}:${this.end.column + 1}"
+                "${this.start.line}:${this.start.column}-${this.end.line}:${this.end.column}"
     }
 
-class SyntaxErrorException(private val e: ParsingException) : LanguageException() {
+data class SyntaxErrorException(private val e: ParsingException) : LanguageException() {
     override fun formatMessage(): String =
         "Syntax Error: expected ${e.expected.joinToString(", ") { it.asString() }} but found ${e.found.tToken.asString()} at ${e.found.location.asString()}"
 }
 
+data class UnificationMismatch(val t1: Type, val t2: Type) : LanguageException() {
+    override fun formatMessage(): String =
+        "Unification Mismatch: unable to unify ${t1.prettyPrint()} with $t2"
+}
+
+data class UnificationManyMismatch(val t1: List<Type>, val t2: List<Type>) : LanguageException() {
+    override fun formatMessage(): String =
+        "Unification Mismatch: unable to unify ${t1.joinToString(", ") { it.prettyPrint() }} with ${t2.joinToString(", ") { it.prettyPrint() }}"
+}
+
+data class UnknownNameException(val name: String, val location: Location) : LanguageException() {
+    override fun formatMessage(): String =
+        "Unknown Name: $name at ${location.asString()}"
+}
