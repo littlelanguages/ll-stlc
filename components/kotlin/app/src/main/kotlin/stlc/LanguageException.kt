@@ -55,12 +55,12 @@ data class SyntaxErrorException(private val e: ParsingException) : LanguageExcep
         "Syntax Error: expected ${e.expected.joinToString(", ") { it.asString() }} but found ${e.found.tToken.asString()} at ${e.found.location.asString()}"
 }
 
-data class UnificationMismatch(val t1: Type, val t2: Type) : LanguageException() {
+data class UnificationMismatchException(val t1: Type, val t2: Type) : LanguageException() {
     override fun formatMessage(): String =
         "Unification Mismatch: unable to unify ${t1.prettyPrint()} with $t2"
 }
 
-data class UnificationManyMismatch(val t1: List<Type>, val t2: List<Type>) : LanguageException() {
+data class UnificationManyMismatchException(val t1: List<Type>, val t2: List<Type>) : LanguageException() {
     override fun formatMessage(): String =
         "Unification Mismatch: unable to unify ${t1.joinToString(", ") { it.prettyPrint() }} with ${t2.joinToString(", ") { it.prettyPrint() }}"
 }
