@@ -85,17 +85,22 @@ Deno.test("Format syntax error", () => {
 Deno.test("Format unification error", () => {
   assertError(
     "1 + True",
-    "Unification Mismatch Error: unable to unify Bool from 1:5-8 with Int",
+    "Unification Mismatch: unable to unify Bool from 1:5-8 with Int",
   );
 
   assertError(
     "if (1) 1 else 2",
-    "Unification Mismatch Error: unable to unify Int from 1:5 with Bool",
+    "Unification Mismatch: unable to unify Int from 1:5 with Bool",
   );
 
   assertError(
     "if (1 + 2) 1 else 2",
-    "Unification Mismatch Error: unable to unify Int from 1:5-9 with Bool",
+    "Unification Mismatch: unable to unify Int from 1:5-9 with Bool",
+  );
+
+  assertError(
+    "let xx = 100 in if (xx) 1 else 2",
+    "Unification Mismatch: unable to unify Int from 1:21-22 with Bool",
   );
 });
 

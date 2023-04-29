@@ -12,7 +12,6 @@ import {
   typeInt,
 } from "./Typing.ts";
 import {
-  combine,
   mkCoordinate,
 } from "https://raw.githubusercontent.com/littlelanguages/scanpiler-deno-lib/0.1.1/location.ts";
 
@@ -27,7 +26,7 @@ const ops = new Map([
 export const inferExpression = (
   env: TypeEnv,
   expression: Expression,
-  constraints: Constraints = new Constraints(),
+  constraints: Constraints,
   pump: Pump,
 ): [Constraints, Type] => {
   const fix = (
@@ -134,14 +133,12 @@ export const inferExpression = (
       return new TTuple(expr.values.map((v) => infer(env, v)));
     }
     if (expr.type === "Op") {
-      const location = combine(expr.left.location, expr.right.location);
-
       const tl = infer(env, expr.left);
       const tr = infer(env, expr.right);
-      const tv = pump.next().atLocation(location);
+      const tv = pump.next().atLocation(expr.location);
 
-      const u1 = new TArr(tl, new TArr(tr, tv), location);
-      const u2 = ops.get(expr.op)!.atLocation(location);
+      const u1 = new TArr(tl, new TArr(tr, tv), expr.location);
+      const u2 = ops.get(expr.op)!.atLocation(expr.location);
       constraints.add(u1, u2);
       return tv;
     }
@@ -156,7 +153,7 @@ export const inferExpression = (
         };
       }
 
-      return scheme.instantiate(pump);
+      return scheme.instantiate(pump).atLocation(expr.location);
     }
 
     return typeError;

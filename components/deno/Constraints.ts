@@ -1,5 +1,4 @@
-import { nullSubs, Subst, TArr, TTuple, TVar, Var } from "./Typing.ts";
-import { Type } from "./Typing.ts";
+import { nullSubs, Subst, TArr, TTuple, TVar, Type, Var } from "./Typing.ts";
 
 type Constraint = [Type, Type];
 type Unifier = [Subst, Array<Constraint>];

@@ -133,7 +133,7 @@ export const formatError = (e: AnError): string => {
         e.expected.map(ttokenToString).join(", ")
       } but found ${ttokenToString(e.found[0])} at ${toString(e.found[1])}`;
     case "UnificationMismatchError":
-      return `Unification Mismatch Error: unable to unify ${e.type1.prettyPrint()} with ${e.type2.prettyPrint()}`;
+      return `Unification Mismatch: unable to unify ${e.type1.prettyPrint()} with ${e.type2.prettyPrint()}`;
     case "UnknownNameError":
       return `Unknown Name: ${e.name} at ${toString(e.location)}`;
     default:
