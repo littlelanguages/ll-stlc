@@ -8,7 +8,10 @@ fun execute(input: String): ExecuteResult {
         emptyTypeEnv,
         ast
     )
-    return ExecuteResult(evaluate(ast, emptyMap()), type.apply(constraints.solve()))
+
+    val exprType = type.apply(constraints.solve())
+
+    return ExecuteResult(evaluate(ast, emptyMap()), exprType)
 }
 
 private val binaryOps: Map<Op, (Any, Any) -> Any> = mapOf(
