@@ -11,8 +11,6 @@ data class Constraints(private val constraints: MutableList<Constraint> = mutabl
         solver(constraints)
 
     override fun toString(): String = constraints.joinToString(", ") { "${it.first} ~ ${it.second}" }
-
-    fun clone(): Constraints = Constraints(constraints.toMutableList())
 }
 
 private data class Unifier(val subst: Subst, val constraints: List<Constraint>)
@@ -69,4 +67,5 @@ private fun solver(constraints: List<Constraint>): Subst {
 }
 
 data class UnificationMismatch(val t1: Type, val t2: Type) : Exception()
+
 data class UnificationManyMismatch(val t1: List<Type>, val t2: List<Type>) : Exception()

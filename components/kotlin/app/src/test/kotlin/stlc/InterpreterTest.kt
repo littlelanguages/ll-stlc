@@ -81,6 +81,19 @@ class InterpreterTest {
     }
 }
 
+class FormatErrorsTest {
+    @Test
+    fun syntaxError() {
+        assertFormatError("let x = in x * x +", "Syntax Error: expected '(', literal int, True, False, '\\', let, if, identifier but found in at 1:10-11")
+        assertFormatError("10 +", "Syntax Error: expected '(', literal int, True, False, '\\', let, if, identifier but found <end-of-stream> at 1:6")
+    }
+
+//    @Test
+//    fun unificationError() {
+//        assertFormatError("1 + True", "Unification Mismatch Error: unable to unify Bool from 1:5-8 with Int")
+//    }
+}
+
 private fun assertExecute(input: String, expected: String) {
     val (value, type) = execute(input)
 
@@ -88,5 +101,13 @@ private fun assertExecute(input: String, expected: String) {
         assertEquals(expected, "function: $type")
     } else {
         assertEquals(expected, "$value: $type")
+    }
+}
+
+private fun assertFormatError(input: String, expected: String) {
+    try {
+        execute(input)
+    } catch (e: LanguageException) {
+        assertEquals(expected, e.formatMessage())
     }
 }
