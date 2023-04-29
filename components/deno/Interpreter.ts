@@ -122,7 +122,7 @@ const ttokenToString = (ttoken: TToken): string => {
     case TToken.EOS:
       return "<end-of-stream>";
     case TToken.ERROR:
-      return "error";
+      return "<error>";
   }
 };
 
