@@ -10,7 +10,15 @@ const Instructions = @import("instructions.zig");
 //   invoked and to the activation record that describes the environment in which the closure
 //   can execute.
 
+const Colour = enum(u2) {
+    Black = 0,
+    White = 1,
+};
+
 const Value = struct {
+    colour: Colour,
+    next: ?*Value,
+
     v: ValueValue,
 
     pub fn activationDepth(self: *Value) !u32 {
@@ -28,6 +36,18 @@ const Value = struct {
             .b => return std.fmt.allocPrint(allocator, "{}", .{self.v.b}),
             .c => return std.fmt.allocPrint(allocator, "c{d}#{d}", .{ self.v.c.ip, try self.activationDepth() }),
             .a => return std.fmt.allocPrint(allocator, "a{d}#{d}", .{ self.v.a.nextIP, try self.activationDepth() }),
+        }
+    }
+
+    pub fn deinit(self: *Value, allocator: std.mem.Allocator) void {
+        switch (self.v) {
+            .n, .b, .c => {},
+            .a => {
+                if (self.v.a.data != null) {
+                    allocator.free(self.v.a.data.?);
+                    self.v.a.data = null;
+                }
+            },
         }
     }
 };
@@ -57,32 +77,63 @@ const MemoryState = struct {
     memory: []const u8,
     stack: std.ArrayList(*Value),
     activation: *Value,
+    colour: Colour,
+    root: ?*Value,
+    memory_size: u32,
+    memory_capacity: u32,
+
+    fn attach_value(self: *MemoryState, value: *Value) void {
+        self.memory_size += 1;
+        value.colour = self.colour;
+        value.next = self.root;
+        self.root = value;
+    }
 
     pub fn newActivation(self: *MemoryState, parentActivation: ?*Value, closure: ?*Value, nextIP: u32) !*Value {
+        gc(self);
+
         const v = try self.allocator.create(Value);
         v.v = ValueValue{ .a = Activation{ .parentActivation = parentActivation, .closure = closure, .nextIP = nextIP, .data = null } };
         try self.stack.append(v);
+
+        attach_value(self, v);
+
         return v;
     }
 
     pub fn newBool(self: *MemoryState, b: bool) !*Value {
+        gc(self);
+
         const v = try self.allocator.create(Value);
         v.v = ValueValue{ .b = b };
         try self.stack.append(v);
+
+        attach_value(self, v);
+
         return v;
     }
 
     pub fn newClosure(self: *MemoryState, parentActivation: ?*Value, targetIP: u32) !*Value {
+        gc(self);
+
         const v = try self.allocator.create(Value);
         v.v = ValueValue{ .c = Closure{ .previousActivation = parentActivation, .ip = targetIP } };
         try self.stack.append(v);
+
+        attach_value(self, v);
+
         return v;
     }
 
     pub fn newInt(self: *MemoryState, i: i32) !*Value {
+        gc(self);
+
         const v = try self.allocator.create(Value);
         v.v = ValueValue{ .n = i };
         try self.stack.append(v);
+
+        attach_value(self, v);
+
         return v;
     }
 
@@ -105,7 +156,119 @@ const MemoryState = struct {
         self.ip += 4;
         return value;
     }
+
+    pub fn deinit(self: *MemoryState) void {
+        // var count: u32 = 0;
+        // for (self.stack.items) |v| {
+        //     count += 1;
+        //     _ = v;
+        // }
+        // if (self.activation.v.a.data != null) {
+        //     self.allocator.free(self.activation.v.a.data.?);
+        //     self.activation.v.a.data = null;
+        // }
+        // force_gc(self);
+        // var number_of_values: u32 = 0;
+        // {
+        //     var runner: ?*Value = self.root;
+        //     while (runner != null) {
+        //         const next = runner.?.next;
+        //         number_of_values += 1;
+        //         runner = next;
+        //     }
+        // }
+        // std.log.info("gc: memory state stack length: {d} vs {d}: values: {d} vs {d}", .{ self.stack.items.len, count, self.memory_size, number_of_values });
+        // self.stack.deinit();
+        // self.stack = std.ArrayList(*Value).init(self.allocator);
+        // self.activation = &Value{ .colour = self.colour, .next = null, .v = ValueValue{ .n = 0 } };
+        // self.stack.deinit();
+
+        self.stack.deinit();
+        var runner: ?*Value = self.root;
+        while (runner != null) {
+            const next = runner.?.next;
+            runner.?.deinit(self.allocator);
+            self.allocator.destroy(runner.?);
+            runner = next;
+        }
+    }
 };
+
+fn mark(state: *MemoryState, possible_value: ?*Value, colour: Colour) void {
+    if (possible_value == null) {
+        return;
+    }
+
+    const v = possible_value.?;
+
+    if (v.colour == colour) {
+        return;
+    }
+
+    v.colour = colour;
+
+    switch (v.v) {
+        .n, .b => {},
+        .c => {
+            mark(state, v.v.c.previousActivation, colour);
+        },
+        .a => {
+            mark(state, v.v.a.parentActivation, colour);
+            mark(state, v.v.a.closure, colour);
+            if (v.v.a.data != null) {
+                for (v.v.a.data.?) |data| {
+                    mark(state, data, colour);
+                }
+            }
+        },
+    }
+}
+
+fn sweep(state: *MemoryState, colour: Colour) void {
+    var runner: *?*Value = &state.root;
+    while (runner.* != null) {
+        if (runner.*.?.colour != colour) {
+            // std.log.info("gc: sweep: {*}", .{runner.*.?});
+            const next = runner.*.?.next;
+            runner.*.?.deinit(state.allocator);
+            state.allocator.destroy(runner.*.?);
+            state.memory_size -= 1;
+            runner.* = next;
+        } else {
+            runner = &(runner.*.?.next);
+        }
+    }
+}
+
+fn force_gc(state: *MemoryState) void {
+    const new_colour = if (state.colour == Colour.Black) Colour.White else Colour.Black;
+
+    mark(state, state.activation, new_colour);
+    for (state.stack.items) |value| {
+        mark(state, value, new_colour);
+    }
+
+    sweep(state, new_colour);
+
+    state.colour = new_colour;
+}
+
+fn gc(state: *MemoryState) void {
+    const threshold_rate = 0.75;
+
+    if (state.memory_size > state.memory_capacity) {
+        const old_size = state.memory_size;
+        const start_time = std.time.milliTimestamp();
+        force_gc(state);
+        const end_time = std.time.milliTimestamp();
+        std.log.info("gc: time={d}ms, nodes freed={d},  heap size: {d}", .{ end_time - start_time, old_size - state.memory_size, state.memory_size });
+
+        if (@intToFloat(f32, state.memory_size) / @intToFloat(f32, state.memory_capacity) > threshold_rate) {
+            state.memory_capacity *= 2;
+            std.log.info("gc: double heap capacity to {}", .{state.memory_capacity});
+        }
+    }
+}
 
 fn readI32FromBuffer(buffer: []const u8, ip: u32) i32 {
     return buffer[ip] + @as(i32, 8) * buffer[ip + 1] + @as(i32, 65536) * buffer[ip + 2] + @as(i32, 16777216) * buffer[ip + 3];
@@ -169,7 +332,11 @@ fn logInstruction(state: *MemoryState) !void {
 }
 
 fn initMemoryState(allocator: std.mem.Allocator, buffer: []const u8) !MemoryState {
+    const default_colour = Colour.White;
+
     var activation = try allocator.create(Value);
+    activation.colour = default_colour;
+    activation.next = null;
     activation.v = ValueValue{ .a = Activation{ .parentActivation = null, .closure = null, .nextIP = 0, .data = null } };
 
     return MemoryState{
@@ -178,6 +345,10 @@ fn initMemoryState(allocator: std.mem.Allocator, buffer: []const u8) !MemoryStat
         .memory = buffer,
         .stack = std.ArrayList(*Value).init(allocator),
         .activation = activation,
+        .colour = default_colour,
+        .root = activation,
+        .memory_size = 1, // initialised to 1 to accomodate the root activation record
+        .memory_capacity = 32,
     };
 }
 
@@ -342,7 +513,10 @@ fn processInstruction(state: *MemoryState) !bool {
 }
 
 pub fn execute(buffer: []const u8) !void {
-    const allocator = std.heap.page_allocator;
+    // const allocator = std.heap.page_allocator;
+
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
 
     var state = try initMemoryState(allocator, buffer);
 
@@ -350,6 +524,13 @@ pub fn execute(buffer: []const u8) !void {
         // try logInstruction(&state);
 
         if (try processInstruction(&state)) {
+            state.deinit();
+
+            // _ = gpa.detectLeaks();
+            if (gpa.deinit()) {
+                std.log.err("Failed to deinit allocator\n", .{});
+                std.process.exit(1);
+            }
             return;
         }
     }

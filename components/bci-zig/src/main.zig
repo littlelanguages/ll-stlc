@@ -35,5 +35,3 @@ fn loadBinary(allocator: std.mem.Allocator, fileName: [:0]const u8) ![]u8 {
 
     return buffer;
 }
-
-test "simple test" {}
