@@ -140,6 +140,9 @@ jobs:
         with:
           deno-version: v1.x
 
+      - name: Install zig
+        uses: goto-bus-stop/setup-zig@v2
+
       - name: Build and Tests
         run: |
           cd ./components/bci-zig
