@@ -141,7 +141,7 @@ jobs:
           deno-version: v1.x
 
       - name: Install zig
-        uses: goto-bus-stop/setup-zig@v2
+        uses: korandoru/setup-zig@v1
 
       - name: Build and Tests
         run: |
