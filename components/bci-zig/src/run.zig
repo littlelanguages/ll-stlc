@@ -21,21 +21,12 @@ const Value = struct {
 
     v: ValueValue,
 
-    pub fn activationDepth(self: *Value) !u32 {
+    pub fn activation_depth(self: *Value) !u32 {
         switch (self.v) {
             .n => return 0,
             .b => return 0,
             .c => return 1,
-            .a => return 1 + if (self.v.a.parentActivation == null) 0 else try self.v.a.parentActivation.?.activationDepth(),
-        }
-    }
-
-    pub fn toString(self: *Value, allocator: std.mem.Allocator) ![]u8 {
-        switch (self.v) {
-            .n => return std.fmt.allocPrint(allocator, "{}", .{self.v.n}),
-            .b => return std.fmt.allocPrint(allocator, "{}", .{self.v.b}),
-            .c => return std.fmt.allocPrint(allocator, "c{d}#{d}", .{ self.v.c.ip, try self.activationDepth() }),
-            .a => return std.fmt.allocPrint(allocator, "a{d}#{d}", .{ self.v.a.nextIP, try self.activationDepth() }),
+            .a => return 1 + if (self.v.a.parentActivation == null) 0 else try self.v.a.parentActivation.?.activation_depth(),
         }
     }
 
@@ -82,59 +73,37 @@ const MemoryState = struct {
     memory_size: u32,
     memory_capacity: u32,
 
-    fn attach_value(self: *MemoryState, value: *Value) void {
+    fn new_value(self: *MemoryState, vv: ValueValue) !*Value {
+        gc(self);
+
+        const v = try self.allocator.create(Value);
         self.memory_size += 1;
-        value.colour = self.colour;
-        value.next = self.root;
-        self.root = value;
-    }
 
-    pub fn newActivation(self: *MemoryState, parentActivation: ?*Value, closure: ?*Value, nextIP: u32) !*Value {
-        gc(self);
+        v.colour = self.colour;
+        v.v = vv;
+        v.next = self.root;
 
-        const v = try self.allocator.create(Value);
-        v.v = ValueValue{ .a = Activation{ .parentActivation = parentActivation, .closure = closure, .nextIP = nextIP, .data = null } };
+        self.root = v;
+
         try self.stack.append(v);
-
-        attach_value(self, v);
 
         return v;
     }
 
-    pub fn newBool(self: *MemoryState, b: bool) !*Value {
-        gc(self);
-
-        const v = try self.allocator.create(Value);
-        v.v = ValueValue{ .b = b };
-        try self.stack.append(v);
-
-        attach_value(self, v);
-
-        return v;
+    pub fn new_activation_value(self: *MemoryState, parentActivation: ?*Value, closure: ?*Value, nextIP: u32) !*Value {
+        return try self.new_value(ValueValue{ .a = Activation{ .parentActivation = parentActivation, .closure = closure, .nextIP = nextIP, .data = null } });
     }
 
-    pub fn newClosure(self: *MemoryState, parentActivation: ?*Value, targetIP: u32) !*Value {
-        gc(self);
-
-        const v = try self.allocator.create(Value);
-        v.v = ValueValue{ .c = Closure{ .previousActivation = parentActivation, .ip = targetIP } };
-        try self.stack.append(v);
-
-        attach_value(self, v);
-
-        return v;
+    pub fn new_bool_value(self: *MemoryState, b: bool) !*Value {
+        return try self.new_value(ValueValue{ .b = b });
     }
 
-    pub fn newInt(self: *MemoryState, i: i32) !*Value {
-        gc(self);
+    pub fn new_closure_value(self: *MemoryState, parentActivation: ?*Value, targetIP: u32) !*Value {
+        return try self.new_value(ValueValue{ .c = Closure{ .previousActivation = parentActivation, .ip = targetIP } });
+    }
 
-        const v = try self.allocator.create(Value);
-        v.v = ValueValue{ .n = i };
-        try self.stack.append(v);
-
-        attach_value(self, v);
-
-        return v;
+    pub fn new_int_value(self: *MemoryState, i: i32) !*Value {
+        return try self.new_value(ValueValue{ .n = i });
     }
 
     pub fn pop(self: *MemoryState) *Value {
@@ -145,19 +114,23 @@ const MemoryState = struct {
         return self.stack.items[self.stack.items.len - n - 1];
     }
 
-    pub fn readU8(self: *MemoryState) u8 {
+    pub fn read_u8(self: *MemoryState) u8 {
         const value = self.memory[self.ip];
         self.ip += 1;
         return value;
     }
 
-    pub fn readI32(self: *MemoryState) i32 {
-        const value = readI32FromBuffer(self.memory, self.ip);
+    pub fn read_i32(self: *MemoryState) i32 {
+        const value = read_i32_from(self.memory, self.ip);
         self.ip += 4;
         return value;
     }
 
     pub fn deinit(self: *MemoryState) void {
+        // // Leave this code in - helpful to use when debugging memory leaks.
+        // // The code following this comment block just nukes the allocated
+        // // memory without consideration what is still in use.
+        //
         // var count: u32 = 0;
         // for (self.stack.items) |v| {
         //     count += 1;
@@ -228,7 +201,6 @@ fn sweep(state: *MemoryState, colour: Colour) void {
     var runner: *?*Value = &state.root;
     while (runner.* != null) {
         if (runner.*.?.colour != colour) {
-            // std.log.info("gc: sweep: {*}", .{runner.*.?});
             const next = runner.*.?.next;
             runner.*.?.deinit(state.allocator);
             state.allocator.destroy(runner.*.?);
@@ -270,68 +242,11 @@ fn gc(state: *MemoryState) void {
     }
 }
 
-fn readI32FromBuffer(buffer: []const u8, ip: u32) i32 {
+fn read_i32_from(buffer: []const u8, ip: u32) i32 {
     return buffer[ip] + @as(i32, 8) * buffer[ip + 1] + @as(i32, 65536) * buffer[ip + 2] + @as(i32, 16777216) * buffer[ip + 3];
 }
 
-fn logInstruction(state: *MemoryState) !void {
-    var ip = state.ip;
-    const instruction = state.memory[ip];
-
-    std.debug.print("{d}: {s}", .{ ip, Instructions.instructions[instruction].name });
-    ip += 1;
-    for (Instructions.instructions[instruction].parameters) |parameter| {
-        _ = parameter;
-        const value = readI32FromBuffer(state.memory, ip);
-
-        std.debug.print(" {}", .{value});
-        ip += 4;
-    }
-    std.debug.print(": [", .{});
-    var i = state.stack.items.len;
-    while (i > 0) {
-        if (i != state.stack.items.len) {
-            std.debug.print(", ", .{});
-        }
-        const str = try state.stack.items[i - 1].toString(state.allocator);
-        std.debug.print("{s}", .{str});
-        state.allocator.free(str);
-        // std.debug.print(" {}", .{});
-        i -= 1;
-    }
-    std.debug.print("]", .{});
-
-    var a: ?*Value = state.activation;
-    while (a != null) {
-        if (a.?.v.a.data == null) {
-            std.debug.print(" -", .{});
-        } else {
-            const vs: []?*Value = a.?.v.a.data.?;
-
-            std.debug.print(" <", .{});
-            var first = true;
-            for (vs) |v| {
-                if (first) {
-                    first = false;
-                } else {
-                    std.debug.print(" ", .{});
-                }
-                if (v == null) {
-                    std.debug.print(".", .{});
-                } else {
-                    const str = try v.?.toString(state.allocator);
-                    std.debug.print("{s}", .{str});
-                    state.allocator.free(str);
-                }
-            }
-            std.debug.print(">", .{});
-        }
-        a = a.?.v.a.parentActivation;
-    }
-    std.debug.print("\n", .{});
-}
-
-fn initMemoryState(allocator: std.mem.Allocator, buffer: []const u8) !MemoryState {
+fn init_memory_state(allocator: std.mem.Allocator, buffer: []const u8) !MemoryState {
     const default_colour = Colour.White;
 
     var activation = try allocator.create(Value);
@@ -352,23 +267,23 @@ fn initMemoryState(allocator: std.mem.Allocator, buffer: []const u8) !MemoryStat
     };
 }
 
-fn processInstruction(state: *MemoryState) !bool {
-    const instruction = state.readU8();
+fn process_instruction(state: *MemoryState) !bool {
+    const instruction = state.read_u8();
 
     switch (@intToEnum(Instructions.InstructionOpCode, instruction)) {
         Instructions.InstructionOpCode.PUSH_TRUE => {
-            _ = try state.newBool(true);
+            _ = try state.new_bool_value(true);
         },
         Instructions.InstructionOpCode.PUSH_FALSE => {
-            _ = try state.newBool(false);
+            _ = try state.new_bool_value(false);
         },
         Instructions.InstructionOpCode.PUSH_INT => {
-            const value = state.readI32();
-            _ = try state.newInt(value);
+            const value = state.read_i32();
+            _ = try state.new_int_value(value);
         },
         Instructions.InstructionOpCode.PUSH_VAR => {
-            var index = state.readI32();
-            const offset = state.readI32();
+            var index = state.read_i32();
+            const offset = state.read_i32();
 
             var a: ?*Value = state.activation;
             while (index > 0) {
@@ -386,8 +301,8 @@ fn processInstruction(state: *MemoryState) !bool {
             _ = try state.stack.append(a.?.v.a.data.?[@intCast(u32, offset)].?);
         },
         Instructions.InstructionOpCode.PUSH_CLOSURE => {
-            var targetIP = state.readI32();
-            _ = try state.newClosure(state.activation, @intCast(u32, targetIP));
+            var targetIP = state.read_i32();
+            _ = try state.new_closure_value(state.activation, @intCast(u32, targetIP));
         },
         Instructions.InstructionOpCode.ADD => {
             const b = state.pop();
@@ -396,7 +311,7 @@ fn processInstruction(state: *MemoryState) !bool {
                 std.log.err("Run: ADD: expected two integers on the stack, got {} and {}\n", .{ a, b });
                 unreachable;
             }
-            _ = try state.newInt(a.v.n + b.v.n);
+            _ = try state.new_int_value(a.v.n + b.v.n);
         },
         Instructions.InstructionOpCode.SUB => {
             const b = state.pop();
@@ -405,7 +320,7 @@ fn processInstruction(state: *MemoryState) !bool {
                 std.log.err("Run: SUB: expected two integers on the stack, got {} and {}\n", .{ a, b });
                 unreachable;
             }
-            _ = try state.newInt(a.v.n - b.v.n);
+            _ = try state.new_int_value(a.v.n - b.v.n);
         },
         Instructions.InstructionOpCode.MUL => {
             const b = state.pop();
@@ -414,7 +329,7 @@ fn processInstruction(state: *MemoryState) !bool {
                 std.log.err("Run: MUL: expected two integers on the stack, got {} and {}\n", .{ a, b });
                 unreachable;
             }
-            _ = try state.newInt(a.v.n * b.v.n);
+            _ = try state.new_int_value(a.v.n * b.v.n);
         },
         Instructions.InstructionOpCode.DIV => {
             const b = state.pop();
@@ -423,7 +338,7 @@ fn processInstruction(state: *MemoryState) !bool {
                 std.log.err("Run: DIV: expected two integers on the stack, got {} and {}\n", .{ a, b });
                 unreachable;
             }
-            _ = try state.newInt(@divTrunc(a.v.n, b.v.n));
+            _ = try state.new_int_value(@divTrunc(a.v.n, b.v.n));
         },
         Instructions.InstructionOpCode.EQ => {
             const b = state.pop();
@@ -432,14 +347,14 @@ fn processInstruction(state: *MemoryState) !bool {
                 std.log.err("Run: EQ: expected two integers on the stack, got {} and {}\n", .{ a, b });
                 unreachable;
             }
-            _ = try state.newBool(a.v.n == b.v.n);
+            _ = try state.new_bool_value(a.v.n == b.v.n);
         },
         Instructions.InstructionOpCode.JMP => {
-            const targetIP = state.readI32();
+            const targetIP = state.read_i32();
             state.ip = @intCast(u32, targetIP);
         },
         Instructions.InstructionOpCode.JMP_TRUE => {
-            const targetIP = state.readI32();
+            const targetIP = state.read_i32();
             const v = state.pop();
             if (v.v != ValueValue.b) {
                 std.log.err("Run: JMP_TRUE: expected a boolean on the stack, got {}\n", .{v});
@@ -450,7 +365,7 @@ fn processInstruction(state: *MemoryState) !bool {
             }
         },
         Instructions.InstructionOpCode.SWAP_CALL => {
-            const new_activation = try state.newActivation(state.activation, state.peek(1), state.ip);
+            const new_activation = try state.new_activation_value(state.activation, state.peek(1), state.ip);
             state.ip = state.peek(2).v.c.ip;
             state.activation = new_activation;
 
@@ -459,7 +374,7 @@ fn processInstruction(state: *MemoryState) !bool {
             _ = state.pop();
         },
         Instructions.InstructionOpCode.ENTER => {
-            const num_items = state.readI32();
+            const num_items = state.read_i32();
 
             if (state.activation.v.a.data != null) {
                 std.log.err("Run: ENTER: activation has already been initialised\n", .{});
@@ -481,7 +396,7 @@ fn processInstruction(state: *MemoryState) !bool {
                 switch (v.v) {
                     ValueValue.n => try stdout.print("{d}: Int\n", .{v.v.n}),
                     ValueValue.b => try stdout.print("{}: Bool\n", .{v.v.b}),
-                    ValueValue.c => try stdout.print("c{d}#{d}\n", .{ v.v.c.ip, try v.activationDepth() }),
+                    ValueValue.c => try stdout.print("c{d}#{d}\n", .{ v.v.c.ip, try v.activation_depth() }),
                     else => try stdout.print("{}\n", .{v}),
                 }
                 return true;
@@ -490,7 +405,7 @@ fn processInstruction(state: *MemoryState) !bool {
             state.activation = state.activation.v.a.parentActivation.?;
         },
         Instructions.InstructionOpCode.STORE_VAR => {
-            const index = state.readI32();
+            const index = state.read_i32();
 
             const v = state.pop();
             if (state.activation.v.a.data == null) {
@@ -513,17 +428,13 @@ fn processInstruction(state: *MemoryState) !bool {
 }
 
 pub fn execute(buffer: []const u8) !void {
-    // const allocator = std.heap.page_allocator;
-
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
 
-    var state = try initMemoryState(allocator, buffer);
+    var state = try init_memory_state(allocator, buffer);
 
     while (true) {
-        // try logInstruction(&state);
-
-        if (try processInstruction(&state)) {
+        if (try process_instruction(&state)) {
             state.deinit();
 
             // _ = gpa.detectLeaks();
